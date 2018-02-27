@@ -1,0 +1,78 @@
+---
+title: "Practical Machine Learning Final"
+author: "Dan Watkins"
+date: "February 26, 2018"
+output: html_document
+---
+
+## Load data and packages
+
+```{r setup, message = F, warning = F, results = "hide"}
+library(dplyr)
+library(data.table)
+library(caret)
+library(randomForest)
+library(rpart)
+library(gbm)
+library(e1071)
+testing<-fread("pml-testing.csv",na.strings=c("#DIV/0!","", " ","NA"))
+training<-fread("pml-training.csv",na.strings=c("#DIV/0!","", " ","NA"))
+```
+
+## First I look at and clean the data
+
+I find that there are a number of columns that have more than 50% missing data. Although that data does well to predict if we have it, the test set doesn't have those variables, either. I remove them and am left with 19622 complete observations.
+
+```{r look,results = "hide"}
+head(training)
+colMeans(is.na(training))
+
+trainingTrim<-training[,select_if(.SD,function(x) {mean(is.na(x))<.5})]
+testingTrim<-testing[,select_if(.SD,function(x) {mean(is.na(x))<.5})]
+
+victorsVector<-createDataPartition(trainingTrim$classe,p=.8)[[1]]
+trainTrain<-trainingTrim[victorsVector]
+validTrain<-trainingTrim[-victorsVector]
+```
+
+Here I also split my training set into a training set and validation set (80/20).
+
+## Make some models
+
+I make a couple of models appropriate to the type of predicting we are doing. In each case, I normalize the numeric variables by pre-processing with "center" and "scale" parameters. Then I create a prediction vector using each model, predicting outcomes on my validation set.
+
+```{r model, message = F, cache=T, results = "hide"}
+mod1norm<-train(classe~.,data=trainTrain[,.SD,.SDcols=6:60],
+            preProcess=c("center","scale"),method="rpart")
+mod2norm<-train(classe~.,data=trainTrain[,.SD,.SDcols=6:60],
+            preProcess=c("center","scale"),method="gbm")
+mod3norm<-train(classe~.,data=trainTrain[,.SD,.SDcols=6:60],
+            preProcess=c("center","scale"),method="nnet")
+
+rpPred<-predict(mod1norm,newdata=validTrain[,.SD,.SDcols=6:60])
+gbmPred<-predict(mod2norm,newdata=validTrain[,.SD,.SDcols=6:60])
+nnPred<-predict(mod3norm,newdata=validTrain[,.SD,.SDcols=6:60])
+```
+
+I check the accuracy of each model against the validation set.
+
+```{r accuracy}
+# Accuracy of rpart model
+confusionMatrix(rpPred,validTrain$classe)
+# Accuracy of General Boosted Model
+confusionMatrix(gbmPred,validTrain$classe)
+# Accuracy of Neural Net
+confusionMatrix(nnPred,validTrain$classe)
+```s
+
+## Pick my model
+
+Although my intention was to create an ensemble model using the three above models, the GBM outperformed the other two by such a margin that I decided to use it alone.
+
+```{r pick}
+finalPred<-predict(mod2norm,newdata=testingTrim[,.SD,.SDcols=6:60])
+finalPred
+```
+
+
+These are the final predictions for the project. They gave me 20/20 on the quiz, so I'm assuming they are fairly accurate.
